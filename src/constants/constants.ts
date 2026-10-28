@@ -13,7 +13,7 @@ export const HTTP_STATUS = {
 } as const;
 
 export const MESSAGES = {
-    INTERNAL_SERVER_ERROR: "Something went wrong. Please try again later.",
+    INTERNAL_SERVER_ERROR: "Something went wrong.",
     INVALID_JSON: "Request body is not valid JSON",
     ROUTE_NOT_FOUND: "Route not found",
 } as const;
