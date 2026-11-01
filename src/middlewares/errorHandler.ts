@@ -33,7 +33,7 @@ function toResponse(error: unknown): { statusCode: number; message: string } {
         return { statusCode: HTTP_STATUS.BAD_REQUEST, message: MESSAGES.INVALID_OBJECT_ID };
     }
     if (hasNumber(error, "code") === DUPLICATE_KEY_CODE) {
-        return { statusCode: HTTP_STATUS.CONFLICT, message: "A record with this value already exists" };
+        return { statusCode: HTTP_STATUS.CONFLICT, message: MESSAGES.DUPLICATE_RECORD_MESSAGE };
     }
 
     // body-parser (malformed JSON, payload too large...) sets a 4xx `status`.
@@ -41,7 +41,7 @@ function toResponse(error: unknown): { statusCode: number; message: string } {
     if (status !== undefined && status >= 400 && status < 500) {
         return {
             statusCode: status,
-            message: status === HTTP_STATUS.BAD_REQUEST ? MESSAGES.INVALID_JSON : "Request could not be processed",
+            message: status === HTTP_STATUS.BAD_REQUEST ? MESSAGES.INVALID_JSON : MESSAGES.REQUEST_COULD_NOT_BE_PROCESSED,
         };
     }
 

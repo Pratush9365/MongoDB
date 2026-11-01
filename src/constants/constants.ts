@@ -30,6 +30,9 @@ export const MESSAGES = {
     COMMENTS_ONLY_PUBLISHED: "Comments are only allowed on published posts",
     INVALID_OBJECT_ID: "Invalid id format",
     LOGIN_RATE_LIMITED: "Too many failed login attempts. Try again later.",
+    DUPLICATE_RECORD_MESSAGE : "A record with this value already exists",
+    REQUEST_COULD_NOT_BE_PROCESSED : "Request could not be processed"
+
 } as const;
 
 export const AUTH = {

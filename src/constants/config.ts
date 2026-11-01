@@ -12,7 +12,7 @@ export interface Config {
 
 function readPort(value: string | undefined): number {
     if (value === undefined || value === "") return DEFAULT_PORT;
-    const port = Number(value);
+    const port = Number(value);// conveting the string value to number
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
         throw new Error(`PORT must be a number between 1 and 65535 (got "${value}")`);
     }
