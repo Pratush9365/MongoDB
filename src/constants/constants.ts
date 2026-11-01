@@ -9,6 +9,7 @@ export const HTTP_STATUS = {
     FORBIDDEN: 403,
     NOT_FOUND: 404,
     CONFLICT: 409,
+    TOO_MANY_REQUESTS: 429,
     INTERNAL_SERVER_ERROR: 500,
 } as const;
 
@@ -22,6 +23,13 @@ export const MESSAGES = {
     SESSION_INVALID: "Invalid or expired session. Please log in again",
     LOGGED_OUT: "Logged out successfully",
     LOGGED_OUT_ALL: "Logged out from all devices",
+    POST_NOT_FOUND: "Post not found",
+    COMMENT_NOT_FOUND: "Comment not found",
+    NOT_POST_AUTHOR: "Only the author can modify this post",
+    NOT_COMMENT_OWNER: "Only the comment author or the post author can delete this comment",
+    COMMENTS_ONLY_PUBLISHED: "Comments are only allowed on published posts",
+    INVALID_OBJECT_ID: "Invalid id format",
+    LOGIN_RATE_LIMITED: "Too many failed login attempts. Try again later.",
 } as const;
 
 export const AUTH = {
@@ -36,4 +44,32 @@ export const AUTH = {
     PASSWORD_MAX_BYTES: 72,
     NAME_MIN_LENGTH: 2,
     NAME_MAX_LENGTH: 50,
+    /** Part 7 bonus: lock after this many failed logins inside the window. */
+    LOGIN_MAX_ATTEMPTS: 5,
+    /** Part 7 bonus: failed-login window / lock duration (15 minutes). */
+    LOGIN_WINDOW_MS: 15 * 60 * 1000,
+} as const;
+
+export const POST = {
+    TITLE_MIN_LENGTH: 5,
+    TITLE_MAX_LENGTH: 120,
+    BODY_MIN_LENGTH: 20,
+    MAX_TAGS: 5,
+    TAG_MAX_LENGTH: 30,
+    STATUSES: ["draft", "published"] as const,
+    LIST_SORTS: ["newest", "oldest", "mostCommented"] as const,
+    DEFAULT_PAGE: 1,
+    DEFAULT_LIMIT: 10,
+    MAX_LIMIT: 50,
+} as const;
+
+export type PostStatus = (typeof POST.STATUSES)[number];
+export type PostListSort = (typeof POST.LIST_SORTS)[number];
+
+export const COMMENT = {
+    TEXT_MIN_LENGTH: 1,
+    TEXT_MAX_LENGTH: 500,
+    DEFAULT_PAGE: 1,
+    DEFAULT_LIMIT: 10,
+    MAX_LIMIT: 50,
 } as const;
