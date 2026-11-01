@@ -1,4 +1,12 @@
-export interface IUserPayload {
+/** The only shape of a user that is ever sent to a client: no password, no internals. */
+export interface PublicUser {
+    id: string;
     name: string;
-    age?: number;
+    email: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface IUpdateProfilePayload {
+    name: string;
 }
