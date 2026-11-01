@@ -48,6 +48,7 @@ export const AUTH = {
     LOGIN_MAX_ATTEMPTS: 5,
     /** Part 7 bonus: failed-login window / lock duration (15 minutes). */
     LOGIN_WINDOW_MS: 15 * 60 * 1000,
+    LOGIN_WINDOW_SECONDS: 15 * 60,
 } as const;
 
 export const POST = {

@@ -8,6 +8,9 @@ export interface Config {
     nodeEnv: string;
     port: number;
     mongoUri: string;
+    redisUrl: string;
+    /** Redis keys must share the same name as the MongoDB database, e.g. `blog_pratush:`. */
+    redisKeyPrefix: string;
 }
 
 function readPort(value: string | undefined): number {
@@ -42,6 +45,33 @@ function readMongoUri(value: string | undefined): string {
     return uri;
 }
 
+function readRedisUrl(value: string | undefined): string {
+    if (value === undefined || value.trim() === "") {
+        throw new Error("REDIS_URL is missing. Add a Redis connection string to .env, e.g. redis://localhost:6379.");
+    }
+
+    const uri = value.trim();
+    try {
+        const protocol = new URL(uri).protocol;
+        if (protocol !== "redis:" && protocol !== "rediss:") {
+            throw new Error("unsupported protocol");
+        }
+    } catch {
+        throw new Error("REDIS_URL must be a valid redis:// or rediss:// connection string.");
+    }
+    return uri;
+}
+
+function readDatabaseName(mongoUri: string): string {
+    try {
+        const databaseName = decodeURIComponent(new URL(mongoUri).pathname.replace(/^\/+/, "").split("/")[0] ?? "");
+        if (databaseName) return databaseName;
+    } catch {
+        // readMongoUri has already validated ordinary MongoDB connection strings. Keep the error actionable here.
+    }
+    throw new Error("MONGODB_URI must include a database name so Redis keys can use the same prefix.");
+}
+
 let cached: Config | undefined;
 
 /**
@@ -49,10 +79,15 @@ let cached: Config | undefined;
  * so a missing or placeholder value becomes one clear error message instead of a crash trace.
  */
 export function getConfig(): Config {
-    cached ??= {
-        nodeEnv: process.env.NODE_ENV ?? "development",
-        port: readPort(process.env.PORT),
-        mongoUri: readMongoUri(process.env.MONGODB_URI),
-    };
+    if (!cached) {
+        const mongoUri = readMongoUri(process.env.MONGODB_URI);
+        cached = {
+            nodeEnv: process.env.NODE_ENV ?? "development",
+            port: readPort(process.env.PORT),
+            mongoUri,
+            redisUrl: readRedisUrl(process.env.REDIS_URL),
+            redisKeyPrefix: readDatabaseName(mongoUri),
+        };
+    }
     return cached;
 }
