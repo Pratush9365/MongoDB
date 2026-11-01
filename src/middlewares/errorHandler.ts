@@ -16,16 +16,21 @@ function hasNumber(error: unknown, key: "code" | "status"): number | undefined {
     return typeof value === "number" ? value : undefined;
 }
 
-/** Turns any thrown error into { statusCode, message }. Raw errors and stacks are never exposed. */
+/**
+ * Part 6 clean-up: turns any thrown error into { statusCode, message }.
+ * Password hashes and raw stacks are never put in the HTTP body.
+ */
 function toResponse(error: unknown): { statusCode: number; message: string } {
     if (error instanceof AppError) return { statusCode: error.statusCode, message: error.message };
 
     if (error instanceof mongoose.Error.ValidationError) {
-        const message = Object.values(error.errors).map((issue) => issue.message).join(", ");
+        const message = Object.values(error.errors)
+            .map((issue) => issue.message)
+            .join(", ");
         return { statusCode: HTTP_STATUS.BAD_REQUEST, message };
     }
     if (error instanceof mongoose.Error.CastError) {
-        return { statusCode: HTTP_STATUS.BAD_REQUEST, message: `Invalid value for ${error.path}` };
+        return { statusCode: HTTP_STATUS.BAD_REQUEST, message: MESSAGES.INVALID_OBJECT_ID };
     }
     if (hasNumber(error, "code") === DUPLICATE_KEY_CODE) {
         return { statusCode: HTTP_STATUS.CONFLICT, message: "A record with this value already exists" };

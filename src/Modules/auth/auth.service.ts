@@ -2,6 +2,8 @@ import bcrypt from "bcryptjs";
 import { AUTH, MESSAGES } from "../../constants/constants";
 import type { SessionDocument } from "../../model/session.model";
 import type { UserDocument } from "../../model/user.model";
+import { loginAttemptRepo } from "../../Repository/loginAttempt.repository";
+import type { LoginAttemptRepository } from "../../Repository/loginAttempt.repository";
 import { sessionRepo } from "../../Repository/session.repository";
 import type { SessionRepository } from "../../Repository/session.repository";
 import { userRepo } from "../../Repository/user.repository";
@@ -29,6 +31,7 @@ export class AuthService {
     public constructor(
         private readonly users: UserRepository = userRepo,
         private readonly sessions: SessionRepository = sessionRepo,
+        private readonly loginAttempts: LoginAttemptRepository = loginAttemptRepo,
     ) {}
 
     public async signup(payload: ISignupPayload): Promise<PublicUser> {
@@ -46,12 +49,19 @@ export class AuthService {
     }
 
     public async login(payload: ILoginPayload, userAgent: string): Promise<ILoginResult> {
+        await this.assertNotRateLimited(payload.email);
+
         const user = await this.users.findByEmailWithPassword(payload.email);
 
         // Same work and same message for "unknown email" and "wrong password": never reveal which one it was.
         const hash = user?.password ?? (await getDummyHash());
         const passwordMatches = await bcrypt.compare(payload.password, hash);
-        if (!user || !passwordMatches) throw AppError.unauthorized(MESSAGES.INVALID_CREDENTIALS);
+        if (!user || !passwordMatches) {
+            await this.recordFailedLogin(payload.email);
+            throw AppError.unauthorized(MESSAGES.INVALID_CREDENTIALS);
+        }
+
+        await this.loginAttempts.clear(payload.email);
 
         const session = await this.sessions.create({
             userId: user._id,
@@ -80,8 +90,42 @@ export class AuthService {
         return this.sessions.deleteByToken(session.token);
     }
 
+    /** Part 7 bonus: delete every session for this user (all devices). */
     public async logoutAll(user: UserDocument): Promise<void> {
         await this.sessions.deleteAllForUser(user._id);
+    }
+
+    private async assertNotRateLimited(email: string): Promise<void> {
+        const record = await this.loginAttempts.findByEmail(email);
+        if (!record?.lockedUntil) return;
+        if (record.lockedUntil.getTime() > Date.now()) {
+            throw AppError.tooManyRequests(MESSAGES.LOGIN_RATE_LIMITED);
+        }
+        // Lock expired: start fresh on the next failure.
+        await this.loginAttempts.clear(email);
+    }
+
+    private async recordFailedLogin(email: string): Promise<void> {
+        const now = new Date();
+        const existing = await this.loginAttempts.findByEmail(email);
+
+        let failedCount = 1;
+        let windowStartedAt = now;
+        let lockedUntil: Date | null = null;
+
+        if (existing) {
+            const windowOpen = now.getTime() - existing.windowStartedAt.getTime() < AUTH.LOGIN_WINDOW_MS;
+            if (windowOpen) {
+                failedCount = existing.failedCount + 1;
+                windowStartedAt = existing.windowStartedAt;
+            }
+        }
+
+        if (failedCount >= AUTH.LOGIN_MAX_ATTEMPTS) {
+            lockedUntil = new Date(now.getTime() + AUTH.LOGIN_WINDOW_MS);
+        }
+
+        await this.loginAttempts.upsertFailure(email, failedCount, windowStartedAt, lockedUntil);
     }
 }
 

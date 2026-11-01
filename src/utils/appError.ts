@@ -15,4 +15,7 @@ export class AppError extends Error {
     public static forbidden(message: string): AppError { return new AppError(HTTP_STATUS.FORBIDDEN, message); }
     public static notFound(message: string): AppError { return new AppError(HTTP_STATUS.NOT_FOUND, message); }
     public static conflict(message: string): AppError { return new AppError(HTTP_STATUS.CONFLICT, message); }
+    public static tooManyRequests(message: string): AppError {
+        return new AppError(HTTP_STATUS.TOO_MANY_REQUESTS, message);
+    }
 }

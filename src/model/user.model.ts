@@ -25,7 +25,6 @@ const userSchema = new Schema<IUser>(
         email: {
             type: String,
             required: [true, "email is required"],
-            unique: true, // unique index on email
             lowercase: true,
             trim: true,
         },
@@ -46,8 +45,18 @@ const userSchema = new Schema<IUser>(
                 return ret;
             },
         },
+        toObject: {
+            transform: (_doc, ret: Record<string, unknown>) => {
+                delete ret.password;
+                delete ret.__v;
+                return ret;
+            },
+        },
     },
 );
+
+// Part 6: users — unique index on email
+userSchema.index({ email: 1 }, { unique: true });
 
 /** Reuses the model if this file is evaluated twice (watch mode / tests), instead of throwing OverwriteModelError. */
 export const User: Model<IUser> = (mongoose.models.User as Model<IUser> | undefined) ?? mongoose.model<IUser>("User", userSchema);
