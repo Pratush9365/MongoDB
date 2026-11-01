@@ -6,7 +6,6 @@ import "../../model/user.model";
 import "../../model/session.model";
 import "../../model/post.model";
 import "../../model/comment.model";
-import "../../model/loginAttempt.model";
 
 const SERVER_SELECTION_TIMEOUT_MS = 10_000;
 

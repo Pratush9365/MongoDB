@@ -7,6 +7,7 @@ import type { CommentRepository } from "../../Repository/comment.repository";
 import { postRepo } from "../../Repository/post.repository";
 import type { PostRepository } from "../../Repository/post.repository";
 import { AppError } from "../../utils/appError";
+import { invalidatePostAndLists } from "../../utils/cacheInvalidation";
 import type {
     CursorCommentsResult,
     ICreateCommentPayload,
@@ -58,6 +59,8 @@ export class CommentService {
             text: payload.text,
         });
         await this.posts.incrementCommentCount(post._id, 1);
+        // The post response and every public-list version include commentCount.
+        await invalidatePostAndLists(post._id.toString());
         return toPublicComment(comment);
     }
 
@@ -122,6 +125,7 @@ export class CommentService {
 
         await this.comments.deleteById(comment._id);
         if (post) await this.posts.incrementCommentCount(post._id, -1);
+        await invalidatePostAndLists(comment.postId.toString());
     }
 }
 

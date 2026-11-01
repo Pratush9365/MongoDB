@@ -8,9 +8,11 @@ export class UserController {
     public constructor(private readonly service = new UserService()) {}
 
     /** GET /api/users/me */
-    public getMe = (req: Request, res: Response): void => {
+    public getMe = async (req: Request, res: Response): Promise<void> => {
         const { user } = getAuth(req);
-        res.status(HTTP_STATUS.OK).json({ success: true, data: this.service.getProfile(user) });
+        const { profile, cacheHit } = await this.service.getProfile(user);
+        res.set("X-Cache", cacheHit ? "HIT" : "MISS");
+        res.status(HTTP_STATUS.OK).json({ success: true, data: profile });
     };
 
     /** PATCH /api/users/me: the name is the only field a user may change. */

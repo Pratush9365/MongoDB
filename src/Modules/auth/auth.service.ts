@@ -1,18 +1,27 @@
 import bcrypt from "bcryptjs";
+import { Types } from "mongoose";
 import { AUTH, MESSAGES } from "../../constants/constants";
-import type { SessionDocument } from "../../model/session.model";
+import { REDIS_TTL, redisKeys } from "../../constants/redis";
 import type { UserDocument } from "../../model/user.model";
-import { loginAttemptRepo } from "../../Repository/loginAttempt.repository";
-import type { LoginAttemptRepository } from "../../Repository/loginAttempt.repository";
 import { sessionRepo } from "../../Repository/session.repository";
 import type { SessionRepository } from "../../Repository/session.repository";
 import { userRepo } from "../../Repository/user.repository";
 import type { UserRepository } from "../../Repository/user.repository";
 import { AppError } from "../../utils/appError";
+import {
+    addToSetWithExpiry,
+    delKeys,
+    getSetMembers,
+    getString,
+    getTtlSeconds,
+    incrementWithExpiry,
+    removeSetMember,
+    setString,
+} from "../../utils/cache";
 import { generateToken } from "../../utils/token";
 import { toPublicUser } from "../user/user.service";
 import type { PublicUser } from "../user/user.interface";
-import type { ILoginPayload, ILoginResult, ISignupPayload } from "./auth.interface";
+import type { AuthenticatedSession, ILoginPayload, ILoginResult, ISignupPayload } from "./auth.interface";
 
 const DUPLICATE_KEY_CODE = 11000;
 
@@ -31,7 +40,6 @@ export class AuthService {
     public constructor(
         private readonly users: UserRepository = userRepo,
         private readonly sessions: SessionRepository = sessionRepo,
-        private readonly loginAttempts: LoginAttemptRepository = loginAttemptRepo,
     ) {}
 
     public async signup(payload: ISignupPayload): Promise<PublicUser> {
@@ -61,7 +69,7 @@ export class AuthService {
             throw AppError.unauthorized(MESSAGES.INVALID_CREDENTIALS);
         }
 
-        await this.loginAttempts.clear(payload.email);
+        await delKeys(redisKeys.loginFailures(payload.email));
 
         const session = await this.sessions.create({
             userId: user._id,
@@ -69,11 +77,25 @@ export class AuthService {
             expiresAt: new Date(Date.now() + AUTH.SESSION_TTL_MS),
             userAgent,
         });
+        await this.cacheSession(session.token, user._id.toString(), session.expiresAt);
         return { token: session.token, expiresAt: session.expiresAt, user: toPublicUser(user) };
     }
 
-    /** Resolves a token to its session and user. Used by the auth middleware. */
-    public async authenticate(token: string): Promise<{ user: UserDocument; session: SessionDocument }> {
+    /** Resolves a token to its user. Redis avoids the MongoDB session lookup, but MongoDB remains authoritative. */
+    public async authenticate(token: string): Promise<{ user: UserDocument; session: AuthenticatedSession }> {
+        const cachedUserId = await getString(redisKeys.session(token));
+        if (cachedUserId && Types.ObjectId.isValid(cachedUserId)) {
+            const user = await this.users.findById(cachedUserId);
+            if (user) return { user, session: { token, userId: user._id.toString() } };
+
+            // A deleted account invalidates both the durable session and its fast Redis copy.
+            await this.sessions.deleteByToken(token);
+            await delKeys(redisKeys.session(token));
+            await removeSetMember(redisKeys.userSessions(cachedUserId), token);
+            throw AppError.unauthorized(MESSAGES.SESSION_INVALID);
+        }
+        if (cachedUserId) await delKeys(redisKeys.session(token));
+
         const session = await this.sessions.findActiveByToken(token);
         if (!session) throw AppError.unauthorized(MESSAGES.SESSION_INVALID);
 
@@ -83,49 +105,48 @@ export class AuthService {
             await this.sessions.deleteByToken(token);
             throw AppError.unauthorized(MESSAGES.SESSION_INVALID);
         }
-        return { user, session };
+        await this.cacheSession(session.token, user._id.toString(), session.expiresAt);
+        return { user, session: { token: session.token, userId: user._id.toString() } };
     }
 
-    public logout(session: SessionDocument): Promise<void> {
-        return this.sessions.deleteByToken(session.token);
+    public async logout(session: AuthenticatedSession): Promise<void> {
+        // MongoDB is changed first; cache cleanup can safely fail without reviving a session.
+        await this.sessions.deleteByToken(session.token);
+        await delKeys(redisKeys.session(session.token));
+        await removeSetMember(redisKeys.userSessions(session.userId), session.token);
     }
 
     /** Part 7 bonus: delete every session for this user (all devices). */
     public async logoutAll(user: UserDocument): Promise<void> {
         await this.sessions.deleteAllForUser(user._id);
+
+        const userId = user._id.toString();
+        const sessionsKey = redisKeys.userSessions(userId);
+        const tokens = await getSetMembers(sessionsKey);
+        await delKeys(...tokens.map((token) => redisKeys.session(token)), sessionsKey);
     }
 
     private async assertNotRateLimited(email: string): Promise<void> {
-        const record = await this.loginAttempts.findByEmail(email);
-        if (!record?.lockedUntil) return;
-        if (record.lockedUntil.getTime() > Date.now()) {
-            throw AppError.tooManyRequests(MESSAGES.LOGIN_RATE_LIMITED);
+        const key = redisKeys.loginFailures(email);
+        const rawCount = await getString(key);
+        const count = rawCount === null ? 0 : Number(rawCount);
+        if (Number.isInteger(count) && count >= AUTH.LOGIN_MAX_ATTEMPTS) {
+            const ttl = await getTtlSeconds(key);
+            const secondsLeft = ttl !== null && ttl > 0 ? ttl : REDIS_TTL.LOGIN_FAILURE_SECONDS;
+            const minutesLeft = Math.max(1, Math.ceil(secondsLeft / 60));
+            throw AppError.tooManyRequests(`Too many login attempts. Try again in ${minutesLeft} minutes`);
         }
-        // Lock expired: start fresh on the next failure.
-        await this.loginAttempts.clear(email);
     }
 
     private async recordFailedLogin(email: string): Promise<void> {
-        const now = new Date();
-        const existing = await this.loginAttempts.findByEmail(email);
+        await incrementWithExpiry(redisKeys.loginFailures(email), AUTH.LOGIN_WINDOW_SECONDS);
+    }
 
-        let failedCount = 1;
-        let windowStartedAt = now;
-        let lockedUntil: Date | null = null;
-
-        if (existing) {
-            const windowOpen = now.getTime() - existing.windowStartedAt.getTime() < AUTH.LOGIN_WINDOW_MS;
-            if (windowOpen) {
-                failedCount = existing.failedCount + 1;
-                windowStartedAt = existing.windowStartedAt;
-            }
-        }
-
-        if (failedCount >= AUTH.LOGIN_MAX_ATTEMPTS) {
-            lockedUntil = new Date(now.getTime() + AUTH.LOGIN_WINDOW_MS);
-        }
-
-        await this.loginAttempts.upsertFailure(email, failedCount, windowStartedAt, lockedUntil);
+    /** Mirrors a durable MongoDB session in Redis until exactly the same expiry time. */
+    private async cacheSession(token: string, userId: string, expiresAt: Date): Promise<void> {
+        const secondsLeft = Math.max(1, Math.ceil((expiresAt.getTime() - Date.now()) / 1000));
+        await setString(redisKeys.session(token), userId, secondsLeft);
+        await addToSetWithExpiry(redisKeys.userSessions(userId), token, secondsLeft);
     }
 }
 

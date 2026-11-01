@@ -1,7 +1,7 @@
 import type { Request, RequestHandler } from "express";
 import { MESSAGES } from "../constants/constants";
-import type { SessionDocument } from "../model/session.model";
 import type { UserDocument } from "../model/user.model";
+import type { AuthenticatedSession } from "../Modules/auth/auth.interface";
 import { authService } from "../Modules/auth/auth.service";
 import { AppError } from "../utils/appError";
 
@@ -32,7 +32,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
 };
 
 /** For handlers that run after requireAuth: returns the attached user/session without non-null assertions. */
-export function getAuth(req: Request): { user: UserDocument; session: SessionDocument } {
+export function getAuth(req: Request): { user: UserDocument; session: AuthenticatedSession } {
     if (!req.user || !req.session) throw AppError.unauthorized(MESSAGES.AUTH_REQUIRED);
     return { user: req.user, session: req.session };
 }

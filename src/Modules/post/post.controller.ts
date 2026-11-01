@@ -36,7 +36,8 @@ export class PostController {
     /** GET /api/posts/:id — public published post */
     public getById = async (req: Request, res: Response): Promise<void> => {
         const id = readObjectId(req.params.id);
-        const post = await this.service.getPublishedById(id);
+        const { post, cacheHit } = await this.service.getPublishedById(id);
+        res.set("X-Cache", cacheHit ? "HIT" : "MISS");
         res.status(HTTP_STATUS.OK).json({ success: true, data: post });
     };
 
@@ -83,13 +84,14 @@ export class PostController {
             limit: POST.DEFAULT_LIMIT,
             maxLimit: POST.MAX_LIMIT,
         });
-        const result = await this.service.listPublished({
+        const { response, cacheHit } = await this.service.listPublished({
             page,
             limit,
             search: readOptionalString(query.search),
             tag: readOptionalString(query.tag)?.toLowerCase(),
             sort: readPostListSort(query.sort),
         });
-        res.status(HTTP_STATUS.OK).json({ success: true, data: result.data, pagination: result.pagination });
+        res.set("X-Cache", cacheHit ? "HIT" : "MISS");
+        res.status(HTTP_STATUS.OK).json(response);
     };
 }

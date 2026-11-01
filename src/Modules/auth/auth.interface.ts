@@ -16,3 +16,9 @@ export interface ILoginResult {
     expiresAt: Date;
     user: PublicUser;
 }
+
+/** Minimal session context needed after authentication; it works for Redis and MongoDB session lookups alike. */
+export interface AuthenticatedSession {
+    token: string;
+    userId: string;
+}

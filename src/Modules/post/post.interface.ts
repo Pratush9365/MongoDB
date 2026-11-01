@@ -46,3 +46,8 @@ export interface PaginatedPostsResult {
     data: PublicPost[];
     pagination: PaginationMeta;
 }
+
+/** Exact body returned by the public posts endpoint and stored in its Redis cache. */
+export interface PublishedPostsResponse extends PaginatedPostsResult {
+    success: true;
+}

@@ -2,13 +2,14 @@ import type { Server } from "node:http";
 import { app } from "./app";
 import { getConfig } from "./constants/config";
 import { MongoDatabase } from "./providers/database";
+import { RedisProvider } from "./providers/redis";
 
 let server: Server | undefined;
 
 async function shutdown(signal: string): Promise<void> {
     console.log(`${signal} received, shutting down...`);
     server?.close();
-    await MongoDatabase.closeConn();
+    await Promise.all([MongoDatabase.closeConn(), RedisProvider.closeConn()]);
     process.exit(0);
 }
 
@@ -17,6 +18,7 @@ async function bootstrap(): Promise<void> {
 
     // Connect first: the API must not accept requests it cannot serve.
     await MongoDatabase.initConn();
+    await RedisProvider.initConn();
 
     server = app.listen(config.port, () => {
         console.log(`Server listening on port ${config.port} (${config.nodeEnv})`);

@@ -7,7 +7,8 @@ export class StatsController {
 
     /** GET /api/stats — public; one aggregation with $facet */
     public getStats = async (_req: Request, res: Response): Promise<void> => {
-        const stats = await this.service.getBlogStats();
+        const { stats, cacheHit } = await this.service.getBlogStats();
+        res.set("X-Cache", cacheHit ? "HIT" : "MISS");
         res.status(HTTP_STATUS.OK).json({ success: true, data: stats });
     };
 }
